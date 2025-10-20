@@ -1,0 +1,39 @@
+# Web Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+gunicorn==21.2.0
+
+# HTTP Client
+httpx==0.25.1
+
+# Web Scraping
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Vector Embeddings & ML
+sentence-transformers==2.2.2
+numpy==1.24.3
+
+# Data Validation
+pydantic==2.5.0
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# Free Search (No API Key Required)
+duckduckgo-search==4.1.1
+
+# Persistent Storage
+pinecone-client==2.2.4
+redis==5.0.1
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Type Checking (Development)
+mypy==1.7.0
