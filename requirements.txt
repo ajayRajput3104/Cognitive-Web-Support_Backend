@@ -20,11 +20,14 @@ pydantic==2.5.0
 # Environment Variables
 python-dotenv==1.0.0
 
-# Free Search (No API Key Required)
+# FREE Search Alternative (Hybrid approach with fallback)
 duckduckgo-search==4.1.1
 
-# Persistent Storage
-pinecone-client==2.2.4
+# Persistent Storage - UPDATED 2024
+# NEW Pinecone API (no pinecone-client)
+pinecone==5.0.1
+
+# Redis client (works with both Redis and Valkey)
 redis==5.0.1
 
 # Rate Limiting

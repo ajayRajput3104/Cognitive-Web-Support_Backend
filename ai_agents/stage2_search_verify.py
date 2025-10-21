@@ -1,6 +1,7 @@
 """
-Stage 2: Search & Verification Agent
-Finds and verifies official documentation URLs using web search and Gemini
+Stage 2: Search & Verification Agent (HYBRID SEARCH 2024)
+Finds and verifies official documentation URLs
+HYBRID APPROACH: Google first → DuckDuckGo fallback when quota exceeded
 """
 
 import httpx
@@ -10,7 +11,7 @@ from typing import Optional, List
 from pydantic import BaseModel
 import logging
 
-from config import GOOGLE_API_KEY, GOOGLE_CSE_ID, GEMINI_API_KEY, USE_FREE_SEARCH
+from config import GOOGLE_API_KEY, GOOGLE_CSE_ID, GEMINI_API_KEY
 from ai_agents.stage1_deconstructor import DeconstructedQuery
 
 logger = logging.getLogger(__name__)
@@ -37,9 +38,13 @@ class VerifiedURL(BaseModel):
     reasoning: str
 
 
+# Track Google API quota status
+GOOGLE_QUOTA_EXCEEDED = False
+
+
 async def search_web(query: str, num_results: int = 10) -> List[SearchResult]:
     """
-    Searches the web using DuckDuckGo (free) or Google Custom Search
+    HYBRID SEARCH: Try Google first, fallback to DuckDuckGo if quota exceeded
     
     Args:
         query: Search query
@@ -48,27 +53,12 @@ async def search_web(query: str, num_results: int = 10) -> List[SearchResult]:
     Returns:
         List of SearchResult objects
     """
-    try:
-        if USE_FREE_SEARCH and DDGS_AVAILABLE:
-            # Use DuckDuckGo (free, no API key needed)
-            logger.debug(f"Searching DuckDuckGo: {query}")
-            
-            ddgs = DDGS()
-            results = []
-            
-            for r in ddgs.text(query, max_results=num_results):
-                results.append(SearchResult(
-                    title=r.get('title', ''),
-                    url=r.get('href', ''),
-                    snippet=r.get('body', '')
-                ))
-            
-            logger.debug(f"Found {len(results)} results from DuckDuckGo")
-            return results
-            
-        else:
-            # Use Google Custom Search
-            logger.debug(f"Searching Google: {query}")
+    global GOOGLE_QUOTA_EXCEEDED
+    
+    # Try Google first (if quota not exceeded and credentials available)
+    if not GOOGLE_QUOTA_EXCEEDED and GOOGLE_API_KEY and GOOGLE_CSE_ID:
+        try:
+            logger.debug(f"Attempting Google Search: {query}")
             
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.get(
@@ -81,26 +71,59 @@ async def search_web(query: str, num_results: int = 10) -> List[SearchResult]:
                     }
                 )
                 
-                if response.status_code != 200:
-                    logger.error(f"Google Search API error: {response.status_code}")
-                    return []
+                if response.status_code == 200:
+                    data = response.json()
+                    results = []
+                    
+                    for item in data.get("items", []):
+                        results.append(SearchResult(
+                            title=item.get("title", ""),
+                            url=item.get("link", ""),
+                            snippet=item.get("snippet", "")
+                        ))
+                    
+                    if results:
+                        logger.info(f"✓ Google Search: Found {len(results)} results")
+                        return results
                 
-                data = response.json()
-                results = []
+                elif response.status_code == 429:
+                    # Quota exceeded - switch to DuckDuckGo
+                    logger.warning("⚠ Google Search quota exceeded (100/day). Switching to DuckDuckGo fallback...")
+                    GOOGLE_QUOTA_EXCEEDED = True
+                    # Fall through to DuckDuckGo
                 
-                for item in data.get("items", []):
-                    results.append(SearchResult(
-                        title=item.get("title", ""),
-                        url=item.get("link", ""),
-                        snippet=item.get("snippet", "")
-                    ))
-                
-                logger.debug(f"Found {len(results)} results from Google")
+                else:
+                    logger.warning(f"Google Search API error: {response.status_code}")
+                    # Fall through to DuckDuckGo
+                    
+        except Exception as e:
+            logger.warning(f"Google Search failed: {e}. Falling back to DuckDuckGo...")
+    
+    # Fallback to DuckDuckGo (free, unlimited)
+    if DDGS_AVAILABLE:
+        try:
+            logger.debug(f"Using DuckDuckGo Search: {query}")
+            
+            ddgs = DDGS()
+            results = []
+            
+            for r in ddgs.text(query, max_results=num_results):
+                results.append(SearchResult(
+                    title=r.get('title', ''),
+                    url=r.get('href', ''),
+                    snippet=r.get('body', '')
+                ))
+            
+            if results:
+                logger.info(f"✓ DuckDuckGo Search: Found {len(results)} results")
                 return results
             
-    except Exception as e:
-        logger.error(f"Search error: {e}", exc_info=True)
-        return []
+        except Exception as e:
+            logger.error(f"DuckDuckGo search error: {e}", exc_info=True)
+    else:
+        logger.error("❌ No search engines available (DuckDuckGo not installed)")
+    
+    return []
 
 
 async def verify_and_select_url(

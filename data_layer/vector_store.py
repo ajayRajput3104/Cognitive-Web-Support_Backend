@@ -1,5 +1,5 @@
 """
-Vector Store - Persistent Vector Database with Pinecone
+Vector Store - Persistent Vector Database with Pinecone (NEW API 2024)
 Manages embeddings and semantic search with permanent storage
 """
 
@@ -7,12 +7,13 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 from typing import List, Dict, Any, Optional
 import logging
-import pinecone
 from collections import defaultdict
 
+# NEW Pinecone API (2024)
+from pinecone import Pinecone, ServerlessSpec
+
 from config import (
-    PINECONE_API_KEY, 
-    PINECONE_ENVIRONMENT, 
+    PINECONE_API_KEY,
     PINECONE_INDEX_NAME,
     EMBEDDING_MODEL
 )
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class VectorStore:
     """
-    Persistent vector database using Pinecone
+    Persistent vector database using Pinecone (NEW API 2024)
     Stores document embeddings permanently across server restarts
     """
     
@@ -35,23 +36,29 @@ class VectorStore:
             self.embedding_model = SentenceTransformer(EMBEDDING_MODEL)
             logger.info(f"✓ Loaded embedding model: {EMBEDDING_MODEL}")
             
-            # Initialize Pinecone
+            # Initialize Pinecone with NEW API (no environment parameter needed)
             if PINECONE_API_KEY:
-                pinecone.init(
-                    api_key=PINECONE_API_KEY,
-                    environment=PINECONE_ENVIRONMENT
-                )
+                # Create Pinecone client (NEW 2024 API)
+                self.pc = Pinecone(api_key=PINECONE_API_KEY)
                 
-                # Get or create index
-                if PINECONE_INDEX_NAME not in pinecone.list_indexes():
+                # Check if index exists, create if not
+                existing_indexes = [index.name for index in self.pc.list_indexes()]
+                
+                if PINECONE_INDEX_NAME not in existing_indexes:
                     logger.info(f"Creating Pinecone index: {PINECONE_INDEX_NAME}")
-                    pinecone.create_index(
+                    self.pc.create_index(
                         name=PINECONE_INDEX_NAME,
                         dimension=384,  # Dimension for all-MiniLM-L6-v2
-                        metric="cosine"
+                        metric="cosine",
+                        spec=ServerlessSpec(
+                            cloud='aws',
+                            region='us-east-1'  # Free tier region
+                        )
                     )
+                    logger.info(f"✓ Created index: {PINECONE_INDEX_NAME}")
                 
-                self.index = pinecone.Index(PINECONE_INDEX_NAME)
+                # Connect to index
+                self.index = self.pc.Index(PINECONE_INDEX_NAME)
                 self.use_pinecone = True
                 logger.info(f"✓ Connected to Pinecone index: {PINECONE_INDEX_NAME}")
             else:
@@ -92,21 +99,21 @@ class VectorStore:
             )
             
             if self.use_pinecone:
-                # Store in Pinecone
+                # Store in Pinecone (NEW API format)
                 vectors = []
                 for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-                    vector_id = f"{domain}_{i}_{hash(chunk['url'])}"
-                    vectors.append((
-                        vector_id,
-                        embedding.tolist(),
-                        {
+                    vector_id = f"{domain}_{i}_{hash(chunk['url']) % 10**8}"
+                    vectors.append({
+                        "id": vector_id,
+                        "values": embedding.tolist(),
+                        "metadata": {
                             "text": chunk['text'][:1000],  # Pinecone metadata limit
                             "url": chunk['url'],
                             "domain": domain
                         }
-                    ))
+                    })
                 
-                # Upsert in batches
+                # Upsert in batches (NEW API)
                 batch_size = 100
                 for i in range(0, len(vectors), batch_size):
                     batch = vectors[i:i+batch_size]
@@ -153,17 +160,17 @@ class VectorStore:
             query_embedding = self.embedding_model.encode([query])[0]
             
             if self.use_pinecone:
-                # Query Pinecone
+                # Query Pinecone (NEW API)
                 results = self.index.query(
                     vector=query_embedding.tolist(),
                     top_k=top_k,
-                    filter={"domain": domain},
+                    filter={"domain": {"$eq": domain}},
                     include_metadata=True
                 )
                 
                 # Format results
                 relevant_chunks = []
-                for match in results['matches']:
+                for match in results.get('matches', []):
                     relevant_chunks.append({
                         'text': match['metadata']['text'],
                         'url': match['metadata']['url'],
@@ -212,14 +219,18 @@ class VectorStore:
         """
         if self.use_pinecone:
             try:
-                # Query to count domain vectors
-                stats = self.index.describe_index_stats()
-                # Note: Pinecone doesn't provide per-namespace stats easily
-                # This is a limitation of the free tier
+                # Query with filter to get domain stats
+                stats_query = self.index.query(
+                    vector=[0.0] * 384,  # Dummy vector
+                    top_k=1,
+                    filter={"domain": {"$eq": domain}},
+                    include_metadata=False
+                )
+                exists = len(stats_query.get('matches', [])) > 0
                 return {
                     'domain': domain,
-                    'chunks': 0,  # Would need custom tracking
-                    'exists': True
+                    'chunks': 0,  # Pinecone doesn't provide easy count
+                    'exists': exists
                 }
             except:
                 return {'domain': domain, 'chunks': 0, 'exists': False}
@@ -258,8 +269,8 @@ class VectorStore:
         """
         if self.use_pinecone:
             try:
-                # Delete by metadata filter
-                self.index.delete(filter={"domain": domain})
+                # Delete by metadata filter (NEW API)
+                self.index.delete(filter={"domain": {"$eq": domain}})
                 logger.info(f"✓ Cleared domain from Pinecone: {domain}")
                 return True
             except Exception as e:
@@ -296,6 +307,7 @@ class VectorStore:
         """
         try:
             if self.use_pinecone:
+                # Test connection with describe
                 self.index.describe_index_stats()
             return True
         except:

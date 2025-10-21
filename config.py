@@ -1,5 +1,5 @@
 """
-Configuration Management
+Configuration Management (UPDATED 2024)
 Loads and validates all environment variables and settings
 """
 
@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from typing import List
 
-# Load environment variables from .env file
+# Load environment variables from .env file in ROOT directory
 env_path = Path('.') / '.env'
 load_dotenv(dotenv_path=env_path)
 
@@ -19,20 +19,21 @@ load_dotenv(dotenv_path=env_path)
 # Gemini AI (REQUIRED)
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 
-# Google Search (Optional - only if USE_FREE_SEARCH=false)
+# Google Search (Optional - for hybrid search before DuckDuckGo fallback)
 GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 
 # ============================================================================
-# PERSISTENT STORAGE
+# PERSISTENT STORAGE (2024 UPDATES)
 # ============================================================================
 
-# Pinecone Vector Database (REQUIRED for production)
+# Pinecone Vector Database (NEW API - no environment parameter needed)
 PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
-PINECONE_ENVIRONMENT = os.getenv('PINECONE_ENVIRONMENT', 'us-east-1-aws')
 PINECONE_INDEX_NAME = os.getenv('PINECONE_INDEX_NAME', 'cognitive-support')
 
-# Redis Cache (REQUIRED for production)
+# Render Key-Value Store (Redis/Valkey compatible - NO CHANGES NEEDED)
+# Valkey is a drop-in replacement for Redis since Feb 2025
+# Uses same redis:// URL scheme
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
 
 # ============================================================================
@@ -77,13 +78,6 @@ TOP_K_CHUNKS = int(os.getenv('TOP_K_CHUNKS', 5))
 EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2')
 
 # ============================================================================
-# SEARCH CONFIGURATION
-# ============================================================================
-
-# Use free DuckDuckGo search instead of Google
-USE_FREE_SEARCH = os.getenv('USE_FREE_SEARCH', 'true').lower() == 'true'
-
-# ============================================================================
 # VALIDATION
 # ============================================================================
 
@@ -99,23 +93,19 @@ def validate_config():
     if not GEMINI_API_KEY:
         errors.append("GEMINI_API_KEY is required")
     
-    # Check Pinecone configuration
+    # Check Pinecone configuration (NEW API - no environment needed)
     if not PINECONE_API_KEY:
         warnings.append("PINECONE_API_KEY not set - will use in-memory storage (not recommended for production)")
     
-    if not PINECONE_ENVIRONMENT:
-        warnings.append("PINECONE_ENVIRONMENT not set - using default 'us-east-1-aws'")
-    
-    # Check Redis configuration
+    # Check Redis/Valkey configuration
     if REDIS_URL == 'redis://localhost:6379':
-        warnings.append("Using default local Redis - ensure Redis is running or set REDIS_URL")
+        warnings.append("Using default local Redis/Valkey - ensure it's running or set REDIS_URL")
     
-    # Check Google Search keys (only if not using free search)
-    if not USE_FREE_SEARCH:
-        if not GOOGLE_API_KEY:
-            errors.append("GOOGLE_API_KEY required when USE_FREE_SEARCH=false")
-        if not GOOGLE_CSE_ID:
-            errors.append("GOOGLE_CSE_ID required when USE_FREE_SEARCH=false")
+    # Check Google Search keys (optional for hybrid search)
+    if GOOGLE_API_KEY and GOOGLE_CSE_ID:
+        warnings.append("Google Search configured - will use as primary with DuckDuckGo fallback")
+    else:
+        warnings.append("Google Search not configured - will use DuckDuckGo only (unlimited, free)")
     
     # Check security
     if API_KEY == 'dev-api-key-change-in-production':
@@ -139,12 +129,13 @@ def validate_config():
     
     # Print configuration summary
     print("\n" + "=" * 80)
-    print("CONFIGURATION SUMMARY")
+    print("CONFIGURATION SUMMARY (2024 UPDATE)")
     print("=" * 80)
     print(f"🔑 AI Provider: Gemini AI")
-    print(f"🔍 Search: {'DuckDuckGo (Free)' if USE_FREE_SEARCH else 'Google Custom Search'}")
-    print(f"💾 Vector DB: {'Pinecone' if PINECONE_API_KEY else 'In-Memory (not persistent)'}")
-    print(f"⚡ Cache: Redis at {REDIS_URL}")
+    print(f"🔍 Search: Hybrid (Google → DuckDuckGo fallback)")
+    print(f"💾 Vector DB: {'Pinecone (NEW API 2024)' if PINECONE_API_KEY else 'In-Memory (not persistent)'}")
+    print(f"⚡ Cache: Render Key-Value (Valkey/Redis compatible)")
+    print(f"   URL: {REDIS_URL}")
     print(f"🔒 Authentication: {'Enabled' if API_KEY != 'dev-api-key-change-in-production' else 'Development Mode'}")
     print(f"🌐 Port: {PORT}")
     print(f"📊 Log Level: {LOG_LEVEL}")
