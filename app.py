@@ -1,6 +1,6 @@
 """
-FastAPI Application - Production-Ready API Layer
-Includes authentication, rate limiting, CORS, and structured logging
+FastAPI Application - MEMORY OPTIMIZED
+Production-Ready API Layer with memory management
 """
 
 from fastapi import FastAPI, HTTPException, Security, Request, status
@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import logging
 from datetime import datetime
+import gc
 
 from brain import get_brain
 from config import ALLOWED_ORIGINS, PORT, LOG_LEVEL
@@ -29,8 +30,8 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Cognitive Web Support Engine API",
-    description="Production-ready multi-agent AI system for intelligent web support",
-    version="2.0.0",
+    description="Memory-optimized multi-agent AI system for intelligent web support",
+    version="2.0.1",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -75,6 +76,28 @@ class ErrorResponse(BaseModel):
 
 
 # ============================================================================
+# MEMORY MONITORING
+# ============================================================================
+
+def log_memory_usage(context: str = ""):
+    """Log current memory usage"""
+    try:
+        import psutil
+        import os
+        process = psutil.Process(os.getpid())
+        mem_mb = process.memory_info().rss / 1024 / 1024
+        logger.info(f"💾 Memory [{context}]: {mem_mb:.1f} MB")
+        
+        # Warning if getting close to limit
+        if mem_mb > 400:
+            logger.warning(f"⚠️  High memory usage: {mem_mb:.1f} MB / 512 MB limit")
+        
+        return mem_mb
+    except ImportError:
+        return 0
+
+
+# ============================================================================
 # ERROR HANDLERS
 # ============================================================================
 
@@ -82,6 +105,10 @@ class ErrorResponse(BaseModel):
 async def global_exception_handler(request: Request, exc: Exception):
     """Global exception handler for structured error responses"""
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    
+    # Cleanup memory on error
+    gc.collect()
+    
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -101,25 +128,31 @@ async def root():
     """Root endpoint"""
     return {
         "service": "Cognitive Web Support Engine API",
-        "version": "2.0.0",
+        "version": "2.0.1 (Memory Optimized)",
         "status": "online",
-        "docs": "/docs"
+        "docs": "/docs",
+        "optimization": "Render Free Tier (512MB)"
     }
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint for monitoring"""
+    """Health check endpoint with memory monitoring"""
     try:
         brain = get_brain()
         system_status = brain.health_check()
         
+        # Log memory usage
+        mem_usage = log_memory_usage("health_check")
+        
         return {
             "status": "healthy",
             "service": "Cognitive Web Support Engine API",
-            "version": "2.0.0",
+            "version": "2.0.1",
             "timestamp": datetime.now().isoformat(),
-            "system": system_status
+            "system": system_status,
+            "memory_mb": round(mem_usage, 1),
+            "memory_limit_mb": 512
         }
     except Exception as e:
         logger.error(f"Health check failed: {e}")
@@ -159,7 +192,8 @@ async def process_query(
     start_time = datetime.now()
     
     try:
-        logger.info(f"Processing query: {query_request.query[:100]}")
+        logger.info(f"🔍 Processing query: {query_request.query[:100]}")
+        log_memory_usage("query_start")
         
         brain = get_brain()
         result = await brain.process_query(
@@ -168,12 +202,17 @@ async def process_query(
         )
         
         processing_time = (datetime.now() - start_time).total_seconds()
-        logger.info(f"Query processed successfully in {processing_time:.2f}s")
+        logger.info(f"✅ Query processed successfully in {processing_time:.2f}s")
+        
+        # Memory cleanup after processing
+        gc.collect()
+        log_memory_usage("query_end")
         
         return result
         
     except Exception as e:
         logger.error(f"Query processing error: {e}", exc_info=True)
+        gc.collect()  # Cleanup on error
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to process query: {str(e)}"
@@ -181,7 +220,7 @@ async def process_query(
 
 
 @app.post("/api/ingest")
-@limiter.limit("5/minute")
+@limiter.limit("3/minute") 
 async def ingest_domain(
     request: Request,
     url: str,
@@ -192,7 +231,7 @@ async def ingest_domain(
     
     **Authentication Required:** X-API-Key header
     
-    **Rate Limited:** 5 requests per minute
+    **Rate Limited:** 3 requests per minute (memory-intensive)
     
     Args:
         url: Domain URL to ingest (query parameter)
@@ -204,16 +243,23 @@ async def ingest_domain(
         HTTPException: If ingestion fails
     """
     try:
-        logger.info(f"Manual ingestion requested for: {url}")
+        logger.info(f"📥 Manual ingestion requested for: {url}")
+        log_memory_usage("ingest_start")
         
         brain = get_brain()
         result = await brain.ingest_domain(url)
         
-        logger.info(f"Ingestion complete: {result['chunks_ingested']} chunks")
+        logger.info(f"✅ Ingestion complete: {result.get('chunks_ingested', 0)} chunks")
+        
+        # Aggressive cleanup after ingestion
+        gc.collect()
+        log_memory_usage("ingest_end")
+        
         return result
         
     except Exception as e:
         logger.error(f"Ingestion error: {e}", exc_info=True)
+        gc.collect()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to ingest domain: {str(e)}"
@@ -234,8 +280,13 @@ async def get_status(api_key: str = Security(verify_api_key)):
         brain = get_brain()
         status_data = brain.get_status()
         
+        # Add memory info
+        mem_usage = log_memory_usage("status")
+        
         return {
             **status_data,
+            "memory_mb": round(mem_usage, 1),
+            "memory_limit_mb": 512,
             "timestamp": datetime.now().isoformat()
         }
         
@@ -268,12 +319,16 @@ async def clear_cache(
         Status of cache clearing operation
     """
     try:
-        logger.info(f"Cache clear requested for: {domain}")
+        logger.info(f"🗑️  Cache clear requested for: {domain}")
         
         brain = get_brain()
         result = brain.clear_domain_cache(domain)
         
-        logger.info(f"Cache cleared: {result}")
+        logger.info(f"✅ Cache cleared: {result}")
+        
+        # Cleanup after clearing
+        gc.collect()
+        
         return result
         
     except Exception as e:
@@ -292,15 +347,21 @@ async def clear_cache(
 async def startup_event():
     """Initialize services on startup"""
     logger.info("=" * 80)
-    logger.info("🚀 Starting Cognitive Web Support Engine v2.0.0")
+    logger.info("🚀 Starting Cognitive Web Support Engine v2.0.1 (Memory Optimized)")
     logger.info("=" * 80)
     
     try:
+        # Initialize brain (model will load lazily on first use)
         brain = get_brain()
         logger.info("✅ Brain initialized successfully")
         logger.info(f"📊 Port: {PORT}")
         logger.info(f"🔒 Authentication: Enabled")
         logger.info(f"⚡ Rate Limiting: Enabled")
+        logger.info(f"💾 Memory Optimization: Active (Render Free Tier)")
+        
+        # Log initial memory
+        log_memory_usage("startup")
+        
     except Exception as e:
         logger.error(f"❌ Startup failed: {e}", exc_info=True)
         raise
@@ -313,6 +374,10 @@ async def shutdown_event():
     try:
         brain = get_brain()
         brain.cleanup()
+        
+        # Final memory cleanup
+        gc.collect()
+        
         logger.info("✅ Cleanup completed successfully")
     except Exception as e:
         logger.error(f"❌ Shutdown error: {e}", exc_info=True)
@@ -330,5 +395,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=PORT,
         reload=True,
-        log_level=LOG_LEVEL.lower()
+        log_level=LOG_LEVEL.lower(),
+        workers=1  # Single worker for memory efficiency
     )

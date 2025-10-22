@@ -2,38 +2,71 @@ services:
   - type: web
     name: cognitive-web-support
     env: python
-    buildCommand: pip install -r requirements.txt && python download_models.py
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    runtime: python-3.11
+    # Memory-optimized build: no cache, minimal dependencies
+    buildCommand: |
+      pip install --no-cache-dir -r requirements.txt
+    # Memory-optimized start: single worker, connection limits
+    startCommand: |
+      uvicorn app:app \
+        --host 0.0.0.0 \
+        --port $PORT \
+        --workers 1 \
+        --limit-concurrency 3 \
+        --timeout-keep-alive 30 \
+        --no-access-log
     envVars:
+      # Required API Keys
       - key: GEMINI_API_KEY
         sync: false
       - key: PINECONE_API_KEY
         sync: false
-      - key: PINECONE_ENVIRONMENT
-        value: us-east-1-aws
       - key: PINECONE_INDEX_NAME
         value: cognitive-support
+
+      # Redis Connection
       - key: REDIS_URL
         fromService:
           type: redis
           name: cognitive-cache
           property: connectionString
+
+      # Security
       - key: API_KEY
         generateValue: true
+
+      # Search Configuration
       - key: USE_FREE_SEARCH
         value: true
+
+      # Logging
       - key: LOG_LEVEL
         value: INFO
+
+      # CORS
       - key: ALLOWED_ORIGINS
         value: "*"
+
+      # MEMORY OPTIMIZATION SETTINGS (CRITICAL!)
+      - key: EMBEDDING_MODEL
+        value: paraphrase-MiniLM-L3-v2
+      - key: MAX_PAGES_TO_CRAWL
+        value: 3
+      - key: CHUNK_SIZE
+        value: 300
+      - key: CHUNK_OVERLAP
+        value: 30
+      - key: TOP_K_CHUNKS
+        value: 3
+      - key: EMBEDDING_BATCH_SIZE
+        value: 8
+      - key: MAX_CONTENT_SIZE_MB
+        value: 1
       - key: CACHE_DURATION_HOURS
         value: 24
-      - key: MAX_PAGES_TO_CRAWL
-        value: 10
-      - key: TOP_K_CHUNKS
-        value: 5
 
   - type: redis
     name: cognitive-cache
     ipAllowList: []
     plan: free
+    maxmemoryPolicy: allkeys-lru

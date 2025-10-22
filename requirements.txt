@@ -1,20 +1,25 @@
 # Web Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-gunicorn==21.2.0
 
-# HTTP Client
+# HTTP Client (lightweight)
 httpx==0.25.1
 
 # Web Scraping
 beautifulsoup4==4.12.2
 lxml==4.9.3
 
-# Vector Embeddings & ML - FIXED VERSION COMPATIBILITY
-sentence-transformers==2.7.0
+# LIGHTWEIGHT ML STACK - CPU ONLY (80% smaller than GPU version!)
+# Install CPU-only PyTorch first
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.1.0+cpu
+
+# Then install transformers and sentence-transformers
 transformers==4.40.0
-torch==2.1.0
+sentence-transformers==2.7.0
 huggingface-hub==0.23.0
+
+# Numpy (required)
 numpy==1.24.3
 
 # Data Validation
@@ -23,23 +28,20 @@ pydantic==2.5.0
 # Environment Variables
 python-dotenv==1.0.0
 
-# FREE Search Alternative (Hybrid approach with fallback)
+# FREE Search Alternative
 duckduckgo-search==4.1.1
 
-# Persistent Storage - UPDATED 2024
-# NEW Pinecone API
+# Persistent Storage
 pinecone==5.0.1
-
-# Redis client (works with both Redis and Valkey)
 redis==5.0.1
 
 # Rate Limiting
 slowapi==0.1.9
 
-# Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
+# Memory monitoring (optional but helpful)
+psutil==5.9.8
 
-# Type Checking (Development)
-mypy==1.7.0
+# Testing (comment out for production to save space)
+# pytest==7.4.3
+# pytest-asyncio==0.21.1
+# pytest-cov==4.1.0

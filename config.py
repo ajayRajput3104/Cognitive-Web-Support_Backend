@@ -1,5 +1,5 @@
 """
-Configuration Management (UPDATED 2024)
+Configuration Management - MEMORY OPTIMIZED
 Loads and validates all environment variables and settings
 """
 
@@ -24,16 +24,15 @@ GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 
 # ============================================================================
-# PERSISTENT STORAGE (2024 UPDATES)
+# PERSISTENT STORAGE
 # ============================================================================
 
-# Pinecone Vector Database (NEW API - no environment parameter needed)
+# Pinecone Vector Database 
 PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
 PINECONE_INDEX_NAME = os.getenv('PINECONE_INDEX_NAME', 'cognitive-support')
 
-# Render Key-Value Store (Redis/Valkey compatible - NO CHANGES NEEDED)
+# Render Key-Value Store (Redis/Valkey compatible)
 # Valkey is a drop-in replacement for Redis since Feb 2025
-# Uses same redis:// URL scheme
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
 
 # ============================================================================
@@ -54,7 +53,7 @@ ALLOWED_ORIGINS: List[str] = (
 RATE_LIMIT = os.getenv('RATE_LIMIT', '10/minute')
 
 # ============================================================================
-# APPLICATION SETTINGS
+# APPLICATION SETTINGS - OPTIMIZED FOR LOW MEMORY
 # ============================================================================
 
 # Server Configuration
@@ -65,17 +64,21 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 CACHE_DURATION_HOURS = int(os.getenv('CACHE_DURATION_HOURS', 24))
 
 # Crawling Settings
-MAX_PAGES_TO_CRAWL = int(os.getenv('MAX_PAGES_TO_CRAWL', 10))
+MAX_PAGES_TO_CRAWL = int(os.getenv('MAX_PAGES_TO_CRAWL', 3))  # Reduced from 10
 
-# Text Processing
-CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', 500))
-CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', 50))
+# Text Processing 
+CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', 300))  # Reduced from 500
+CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', 30))  # Reduced from 50
 
-# RAG Settings
-TOP_K_CHUNKS = int(os.getenv('TOP_K_CHUNKS', 5))
+# RAG Settings 
+TOP_K_CHUNKS = int(os.getenv('TOP_K_CHUNKS', 3))  # Reduced from 5
 
-# Embedding Model
-EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2')
+# Embedding Model 
+EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'paraphrase-MiniLM-L3-v2')
+
+# Memory Management Settings
+MAX_CONTENT_SIZE_MB = int(os.getenv('MAX_CONTENT_SIZE_MB', 1))  # Max page size
+EMBEDDING_BATCH_SIZE = int(os.getenv('EMBEDDING_BATCH_SIZE', 8))  # Small batches
 
 # ============================================================================
 # VALIDATION
@@ -129,9 +132,9 @@ def validate_config():
     
     # Print configuration summary
     print("\n" + "=" * 80)
-    print("CONFIGURATION SUMMARY (2024 UPDATE)")
+    print("CONFIGURATION SUMMARY - MEMORY OPTIMIZED FOR RENDER FREE TIER")
     print("=" * 80)
-    print(f"🔑 AI Provider: Gemini AI")
+    print(f"🤖 AI Provider: Gemini AI")
     print(f"🔍 Search: Hybrid (Google → DuckDuckGo fallback)")
     print(f"💾 Vector DB: {'Pinecone (NEW API 2024)' if PINECONE_API_KEY else 'In-Memory (not persistent)'}")
     print(f"⚡ Cache: Render Key-Value (Valkey/Redis compatible)")
@@ -139,9 +142,13 @@ def validate_config():
     print(f"🔒 Authentication: {'Enabled' if API_KEY != 'dev-api-key-change-in-production' else 'Development Mode'}")
     print(f"🌐 Port: {PORT}")
     print(f"📊 Log Level: {LOG_LEVEL}")
-    print(f"⏰ Cache Duration: {CACHE_DURATION_HOURS} hours")
-    print(f"📄 Max Pages to Crawl: {MAX_PAGES_TO_CRAWL}")
-    print(f"🧩 Top K Chunks: {TOP_K_CHUNKS}")
+    print(f"\n🧠 MEMORY OPTIMIZATION SETTINGS:")
+    print(f"   Embedding Model: {EMBEDDING_MODEL} (lightweight)")
+    print(f"   Max Pages: {MAX_PAGES_TO_CRAWL}")
+    print(f"   Chunk Size: {CHUNK_SIZE}")
+    print(f"   Top K Chunks: {TOP_K_CHUNKS}")
+    print(f"   Batch Size: {EMBEDDING_BATCH_SIZE}")
+    print(f"   Max Content Size: {MAX_CONTENT_SIZE_MB}MB per page")
     print("=" * 80 + "\n")
 
 
