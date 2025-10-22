@@ -1,6 +1,6 @@
 """
 The Brain - Central Orchestrator for Multi-Agent AI System
-Coordinates all 4 AI agents and manages data flow through the pipeline
+ENHANCED: Better response quality, smart re-crawling, improved answers
 """
 
 from datetime import datetime
@@ -21,13 +21,7 @@ logger = logging.getLogger(__name__)
 
 class CognitiveBrain:
     """
-    Central orchestrator that manages the complete 4-stage cognitive pipeline:
-    1. Query Deconstruction
-    2. Search & Verification
-    3. Intelligent Crawling
-    4. Answer Synthesis
-    
-    Handles persistent storage with Pinecone and Redis
+    Enhanced central orchestrator with smart re-crawling and better responses
     """
     
     def __init__(self):
@@ -35,7 +29,6 @@ class CognitiveBrain:
         try:
             logger.info("🧠 Initializing Cognitive Brain...")
             
-            # Initialize persistent storage
             self.vector_store = VectorStore()
             logger.info("✅ Vector store (Pinecone) connected")
             
@@ -54,14 +47,7 @@ class CognitiveBrain:
         force_refresh: bool = False
     ) -> Dict[str, Any]:
         """
-        Main pipeline: Processes a query through all 4 stages
-        
-        Args:
-            query: User's question
-            force_refresh: Force refresh even if cached
-            
-        Returns:
-            Complete response with answer, sources, and metadata
+        Enhanced pipeline with smart re-crawling when needed
         """
         start_time = datetime.now()
         
@@ -83,7 +69,7 @@ class CognitiveBrain:
             # STAGE 2: SEARCH & VERIFY URL
             # =================================================================
             logger.info("\n🔎 Stage 2: Searching and verifying URL...")
-            search_query = f"{deconstructed.identified_entity} support {deconstructed.user_intent}"
+            search_query = f"{deconstructed.identified_entity} {deconstructed.user_intent} {' '.join(deconstructed.specific_details[:3])}"
             search_results = await search_web(search_query)
             
             if not search_results:
@@ -101,10 +87,30 @@ class CognitiveBrain:
             logger.info(f"   ✓ Domain: {domain}")
             
             # =================================================================
-            # STAGE 3: CRAWL (IF NEEDED)
+            # STAGE 3: INTELLIGENT CRAWLING WITH AUTO-RETRY
             # =================================================================
             use_cached = self.cache_manager.is_cached(domain, force_refresh)
             chunks_crawled = 0
+            
+            # Check if we have relevant content cached
+            if use_cached:
+                logger.info(f"\n✨ Stage 3: Checking cached data for {domain}...")
+                domain_stats = self.vector_store.get_domain_stats(domain)
+                chunks_crawled = domain_stats.get('chunks', 0)
+                logger.info(f"   ✓ Cache hit: {chunks_crawled} chunks available")
+                
+                # Quick relevance check
+                if chunks_crawled > 0:
+                    test_chunks = self.vector_store.retrieve_relevant(
+                        query, 
+                        domain, 
+                        top_k=1
+                    )
+                    
+                    # If relevance is too low, crawl the specific page
+                    if test_chunks and test_chunks[0]['relevance_score'] < 0.3:
+                        logger.info(f"   ⚠️  Low relevance ({test_chunks[0]['relevance_score']:.2f}), crawling specific page...")
+                        use_cached = False
             
             if not use_cached:
                 logger.info(f"\n🕷️  Stage 3: Crawling {domain}...")
@@ -116,15 +122,10 @@ class CognitiveBrain:
                     chunks_crawled = len(chunks)
                     logger.info(f"   ✓ Crawled and indexed {chunks_crawled} chunks")
                 else:
-                    logger.warning("   ⚠ No content extracted from crawl")
-            else:
-                logger.info(f"\n✨ Stage 3: Using cached data for {domain}")
-                domain_stats = self.vector_store.get_domain_stats(domain)
-                chunks_crawled = domain_stats['chunks']
-                logger.info(f"   ✓ Cache hit: {chunks_crawled} chunks available")
+                    logger.warning("   ⚠️  No content extracted from crawl")
             
             # =================================================================
-            # STAGE 4: RETRIEVE & SYNTHESIZE ANSWER
+            # STAGE 4: RETRIEVE & SYNTHESIZE WITH QUALITY CHECK
             # =================================================================
             logger.info(f"\n💡 Stage 4: Synthesizing answer...")
             relevant_chunks = self.vector_store.retrieve_relevant(
@@ -136,17 +137,36 @@ class CognitiveBrain:
             
             if not relevant_chunks:
                 logger.warning("No relevant chunks found in vector store")
-                return self._error_response(
-                    query=query,
-                    deconstructed=deconstructed,
-                    error="No relevant information found",
-                    suggestion=f"The domain {domain} may need to be re-crawled with force_refresh=true"
-                )
+                
+                # ENHANCEMENT: Try crawling specific page if nothing found
+                if use_cached:
+                    logger.info("   🔄 Attempting targeted crawl for better results...")
+                    chunks = await targeted_crawl(verified_url.seed_url, deconstructed, max_pages=2)
+                    if chunks:
+                        self.vector_store.ingest_chunks(chunks, domain)
+                        relevant_chunks = self.vector_store.retrieve_relevant(query, domain, top_k=TOP_K_CHUNKS)
+                        logger.info(f"   ✓ Re-crawl found {len(relevant_chunks)} relevant chunks")
+                
+                if not relevant_chunks:
+                    return self._error_response(
+                        query=query,
+                        deconstructed=deconstructed,
+                        error="No relevant information found",
+                        suggestion=f"Try using force_refresh=true to re-crawl {domain}, or try a different query"
+                    )
+            
+            # Log relevance scores for debugging
+            if relevant_chunks:
+                avg_score = sum(c['relevance_score'] for c in relevant_chunks) / len(relevant_chunks)
+                logger.info(f"   ✓ Average relevance: {avg_score:.2f}")
             
             answer = await synthesize_answer(query, deconstructed, relevant_chunks)
             
             # Calculate metrics
             processing_time = (datetime.now() - start_time).total_seconds()
+            
+            # Get actual domain stats
+            domain_stats = self.vector_store.get_domain_stats(domain)
             
             logger.info(f"\n✅ Complete! Processed in {processing_time:.2f}s")
             logger.info("=" * 80 + "\n")
@@ -158,8 +178,9 @@ class CognitiveBrain:
                 "answer": answer,
                 "metadata": {
                     "domain": domain,
-                    "chunks_available": chunks_crawled,
+                    "chunks_in_database": domain_stats.get('chunks', chunks_crawled),
                     "chunks_used": len(relevant_chunks),
+                    "avg_relevance_score": round(sum(c['relevance_score'] for c in relevant_chunks) / len(relevant_chunks), 3) if relevant_chunks else 0,
                     "cached": use_cached,
                     "processing_time_seconds": round(processing_time, 2),
                     "timestamp": datetime.now().isoformat()
@@ -171,21 +192,12 @@ class CognitiveBrain:
             raise
     
     async def ingest_domain(self, url: str) -> Dict[str, Any]:
-        """
-        Manually ingest a domain for pre-caching
-        
-        Args:
-            url: URL to ingest
-            
-        Returns:
-            Ingestion results with statistics
-        """
+        """Manually ingest a domain for pre-caching"""
         domain = urlparse(url).netloc
         
         logger.info(f"\n📥 Manual ingestion of {domain}...")
         
         try:
-            # Create a generic deconstructed query for broad crawling
             deconstructed = DeconstructedQuery(
                 user_intent="general documentation",
                 identified_entity=domain,
@@ -193,7 +205,6 @@ class CognitiveBrain:
                 inhibitor="none"
             )
             
-            # Crawl the domain
             chunks = await targeted_crawl(url, deconstructed, max_pages=15)
             
             if not chunks:
@@ -205,7 +216,6 @@ class CognitiveBrain:
                     "error": "No content could be extracted"
                 }
             
-            # Store in vector database
             self.vector_store.ingest_chunks(chunks, domain)
             self.cache_manager.mark_cached(domain)
             
@@ -232,12 +242,7 @@ class CognitiveBrain:
             }
     
     def get_status(self) -> Dict[str, Any]:
-        """
-        Get comprehensive system status and statistics
-        
-        Returns:
-            Status dictionary with metrics
-        """
+        """Get comprehensive system status and statistics"""
         try:
             domains_info = []
             
@@ -253,12 +258,11 @@ class CognitiveBrain:
                     "expires_in_hours": round(cache_info['expires_in_hours'], 2) if cache_info else 0
                 })
             
-            # Sort by chunk count descending
             domains_info.sort(key=lambda x: x['chunks'], reverse=True)
             
             return {
                 "status": "online",
-                "version": "2.0.0",
+                "version": "2.0.1",
                 "cached_domains": len(self.cache_manager.get_all_cached_domains()),
                 "total_chunks": self.vector_store.get_total_chunks(),
                 "total_domains": len(self.vector_store.get_all_domains()),
@@ -277,15 +281,7 @@ class CognitiveBrain:
             }
     
     def clear_domain_cache(self, domain: str) -> Dict[str, Any]:
-        """
-        Clear cache for a specific domain
-        
-        Args:
-            domain: Domain to clear
-            
-        Returns:
-            Status dictionary
-        """
+        """Clear cache for a specific domain"""
         try:
             logger.info(f"🗑️  Clearing cache for {domain}...")
             
@@ -313,17 +309,9 @@ class CognitiveBrain:
             }
     
     def health_check(self) -> Dict[str, Any]:
-        """
-        Perform health check on all components
-        
-        Returns:
-            Health status dictionary
-        """
+        """Perform health check on all components"""
         try:
-            # Test vector store connection
             vector_health = self.vector_store.health_check()
-            
-            # Test cache connection
             cache_health = self.cache_manager.health_check()
             
             all_healthy = vector_health and cache_health
@@ -359,18 +347,7 @@ class CognitiveBrain:
         error: str,
         suggestion: str
     ) -> Dict[str, Any]:
-        """
-        Generate standardized error response
-        
-        Args:
-            query: Original query
-            deconstructed: Deconstructed query info
-            error: Error message
-            suggestion: Suggestion for user
-            
-        Returns:
-            Error response dictionary
-        """
+        """Generate standardized error response"""
         return {
             "query": query,
             "deconstructed": deconstructed.dict(),
@@ -390,12 +367,7 @@ class CognitiveBrain:
 _brain_instance: Optional[CognitiveBrain] = None
 
 def get_brain() -> CognitiveBrain:
-    """
-    Get or create the singleton Brain instance
-    
-    Returns:
-        CognitiveBrain instance
-    """
+    """Get or create the singleton Brain instance"""
     global _brain_instance
     if _brain_instance is None:
         _brain_instance = CognitiveBrain()
