@@ -24,15 +24,16 @@ GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
 GOOGLE_CSE_ID = os.getenv('GOOGLE_CSE_ID')
 
 # ============================================================================
-# PERSISTENT STORAGE
+# PERSISTENT STORAGE (2024 UPDATES)
 # ============================================================================
 
-# Pinecone Vector Database 
+# Pinecone Vector Database (NEW API - no environment parameter needed)
 PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
 PINECONE_INDEX_NAME = os.getenv('PINECONE_INDEX_NAME', 'cognitive-support')
 
-# Render Key-Value Store (Redis/Valkey compatible)
+# Render Key-Value Store (Redis/Valkey compatible - NO CHANGES NEEDED)
 # Valkey is a drop-in replacement for Redis since Feb 2025
+# Uses same redis:// URL scheme
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379')
 
 # ============================================================================
@@ -63,17 +64,20 @@ LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
 # Cache Settings
 CACHE_DURATION_HOURS = int(os.getenv('CACHE_DURATION_HOURS', 24))
 
-# Crawling Settings
+# Crawling Settings - REDUCED for memory efficiency
 MAX_PAGES_TO_CRAWL = int(os.getenv('MAX_PAGES_TO_CRAWL', 3))  # Reduced from 10
 
-# Text Processing 
+# Text Processing - REDUCED for memory efficiency  
 CHUNK_SIZE = int(os.getenv('CHUNK_SIZE', 300))  # Reduced from 500
 CHUNK_OVERLAP = int(os.getenv('CHUNK_OVERLAP', 30))  # Reduced from 50
 
-# RAG Settings 
+# RAG Settings - REDUCED for memory efficiency
 TOP_K_CHUNKS = int(os.getenv('TOP_K_CHUNKS', 3))  # Reduced from 5
 
-# Embedding Model 
+# Server Port - Use Render's PORT or default to 8000
+PORT = int(os.getenv('PORT', 8000))
+
+# Embedding Model - LIGHTWEIGHT MODEL (33MB vs 420MB!)
 EMBEDDING_MODEL = os.getenv('EMBEDDING_MODEL', 'paraphrase-MiniLM-L3-v2')
 
 # Memory Management Settings

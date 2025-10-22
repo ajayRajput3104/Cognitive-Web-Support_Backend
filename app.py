@@ -1,5 +1,5 @@
 """
-FastAPI Application - MEMORY OPTIMIZED
+FastAPI Application - MEMORY OPTIMIZED for Render Free Tier (512MB)
 Production-Ready API Layer with memory management
 """
 
@@ -220,7 +220,7 @@ async def process_query(
 
 
 @app.post("/api/ingest")
-@limiter.limit("3/minute") 
+@limiter.limit("3/minute")  # Reduced from 5 (ingestion is memory-intensive)
 async def ingest_domain(
     request: Request,
     url: str,
@@ -389,12 +389,17 @@ async def shutdown_event():
 
 if __name__ == "__main__":
     import uvicorn
-    logger.info(f"🚀 Starting server on port {PORT}")
+    import os
+    
+    # CRITICAL: Use PORT from environment (Render sets this dynamically)
+    port = int(os.getenv("PORT", 8000))
+    
+    logger.info(f"🚀 Starting server on port {port}")
     uvicorn.run(
         "app:app",
         host="0.0.0.0",
-        port=PORT,
-        reload=True,
+        port=port,
+        reload=False,  # Disable reload in production
         log_level=LOG_LEVEL.lower(),
         workers=1  # Single worker for memory efficiency
     )
