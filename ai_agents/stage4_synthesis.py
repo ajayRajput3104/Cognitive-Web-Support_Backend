@@ -70,7 +70,7 @@ Answer:"""
         
         async with httpx.AsyncClient(timeout=60.0) as client:
             response = await client.post(
-                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={GEMINI_API_KEY}",
+                f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}",
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {
