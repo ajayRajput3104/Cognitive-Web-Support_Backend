@@ -1,6 +1,7 @@
 """
 FastAPI Application - MEMORY OPTIMIZED for Render Free Tier (512MB)
 Production-Ready API Layer with memory management
+VERSION: Fixed rate limiting (no slowapi dependency)
 """
 
 from fastapi import FastAPI, HTTPException, Security, Request, status
@@ -15,7 +16,7 @@ import gc
 from brain import get_brain
 from config import ALLOWED_ORIGINS, PORT, LOG_LEVEL
 from middleware.auth import verify_api_key
-from middleware.rate_limiter import limiter
+from middleware.rate_limiter import check_rate_limit  # Simple rate limiter
 
 # Configure structured logging
 logging.basicConfig(
@@ -35,9 +36,6 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc"
 )
-
-# Add rate limiter state
-app.state.limiter = limiter
 
 # CORS for frontend integration
 app.add_middleware(
@@ -167,7 +165,6 @@ async def health_check():
 
 
 @app.post("/api/query", response_model=QueryResponse)
-@limiter.limit("10/minute")
 async def process_query(
     request: Request,
     query_request: QueryRequest,
@@ -177,7 +174,6 @@ async def process_query(
     Main endpoint: Process user query through 4-stage AI pipeline
     
     **Authentication Required:** X-API-Key header
-    
     **Rate Limited:** 10 requests per minute
     
     Args:
@@ -189,6 +185,9 @@ async def process_query(
     Raises:
         HTTPException: If processing fails
     """
+    # Apply rate limiting
+    check_rate_limit(request, max_requests=10, window_seconds=60)
+    
     start_time = datetime.now()
     
     try:
@@ -220,7 +219,6 @@ async def process_query(
 
 
 @app.post("/api/ingest")
-@limiter.limit("3/minute")  # Reduced from 5 (ingestion is memory-intensive)
 async def ingest_domain(
     request: Request,
     url: str,
@@ -230,8 +228,7 @@ async def ingest_domain(
     Manually ingest a domain for pre-caching
     
     **Authentication Required:** X-API-Key header
-    
-    **Rate Limited:** 3 requests per minute (memory-intensive)
+    **Rate Limited:** 3 requests per minute
     
     Args:
         url: Domain URL to ingest (query parameter)
@@ -242,6 +239,9 @@ async def ingest_domain(
     Raises:
         HTTPException: If ingestion fails
     """
+    # Apply rate limiting (stricter for ingestion)
+    check_rate_limit(request, max_requests=3, window_seconds=60)
+    
     try:
         logger.info(f"📥 Manual ingestion requested for: {url}")
         log_memory_usage("ingest_start")
@@ -299,7 +299,6 @@ async def get_status(api_key: str = Security(verify_api_key)):
 
 
 @app.delete("/api/cache/{domain}")
-@limiter.limit("20/minute")
 async def clear_cache(
     request: Request,
     domain: str,
@@ -309,7 +308,6 @@ async def clear_cache(
     Clear cache for a specific domain
     
     **Authentication Required:** X-API-Key header
-    
     **Rate Limited:** 20 requests per minute
     
     Args:
@@ -318,6 +316,9 @@ async def clear_cache(
     Returns:
         Status of cache clearing operation
     """
+    # Apply rate limiting
+    check_rate_limit(request, max_requests=20, window_seconds=60)
+    
     try:
         logger.info(f"🗑️  Cache clear requested for: {domain}")
         
@@ -356,7 +357,7 @@ async def startup_event():
         logger.info("✅ Brain initialized successfully")
         logger.info(f"📊 Port: {PORT}")
         logger.info(f"🔒 Authentication: Enabled")
-        logger.info(f"⚡ Rate Limiting: Enabled")
+        logger.info(f"⚡ Rate Limiting: Enabled (Simple)")
         logger.info(f"💾 Memory Optimization: Active (Render Free Tier)")
         
         # Log initial memory
