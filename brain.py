@@ -108,7 +108,7 @@ class CognitiveBrain:
                     )
                     
                     # If relevance is too low, crawl the specific page
-                    if test_chunks and test_chunks[0]['relevance_score'] < 0.3:
+                    if test_chunks and test_chunks[0]['relevance_score'] < 0.5:
                         logger.info(f"   ⚠️  Low relevance ({test_chunks[0]['relevance_score']:.2f}), crawling specific page...")
                         use_cached = False
             
