@@ -180,6 +180,8 @@ class CognitiveBrain:
             logger.info("=" * 80 + "\n")
             
             return {
+                "success":True,
+                "message":"Query processed successfully",
                 "query": query,
                 "deconstructed": deconstructed.dict(),
                 "verified_url": verified_url.dict(),
@@ -197,7 +199,17 @@ class CognitiveBrain:
             
         except Exception as e:
             logger.error(f"❌ Query processing failed: {e}", exc_info=True)
-            raise
+            return self._error_response(
+                query=query,
+                deconstructed=deconstructed if 'deconstructed' in locals() else DeconstructedQuery(
+                    user_intent="unknown",
+                    identified_entity="unknown",
+                    specific_details=[],
+                    inhibitor="none"
+                ),
+                error=str(e),
+                suggestion="Unexpected error occurred.Try again or use force_refresh"
+            )
     
     async def ingest_domain(self, url: str) -> Dict[str, Any]:
         """Manually ingest a domain for pre-caching"""
@@ -357,6 +369,8 @@ class CognitiveBrain:
     ) -> Dict[str, Any]:
         """Generate standardized error response"""
         return {
+            "success":False,
+            "message":f"Query processing failed:{error}",
             "query": query,
             "deconstructed": deconstructed.dict(),
             "error": error,
