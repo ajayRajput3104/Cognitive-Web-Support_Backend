@@ -146,21 +146,25 @@ class CognitiveBrain:
             if not relevant_chunks:
                 logger.warning("No relevant chunks found in vector store")
                 
-                # ENHANCEMENT: Try crawling specific page if nothing found
-                if use_cached:
-                    logger.info("   🔄 Attempting targeted crawl for better results...")
-                    chunks = await targeted_crawl(verified_url.seed_url, deconstructed, max_pages=2)
-                    if chunks:
-                        self.vector_store.ingest_chunks(chunks, domain)
-                        relevant_chunks = self.vector_store.retrieve_relevant(query, domain, top_k=TOP_K_CHUNKS)
-                        logger.info(f"   ✓ Re-crawl found {len(relevant_chunks)} relevant chunks")
+                # ENHANCED: Always try crawling if nothing found (even on first attempt)
+                logger.info("   🔄 No relevant content in cache, attempting targeted crawl...")
+                chunks = await targeted_crawl(verified_url.seed_url, deconstructed, max_pages=3)
+                
+                if chunks:
+                    logger.info(f"   📥 Ingesting {len(chunks)} newly crawled chunks...")
+                    self.vector_store.ingest_chunks(chunks, domain)
+                    self.cache_manager.mark_cached(domain)
+                    
+                    # Try retrieving again
+                    relevant_chunks = self.vector_store.retrieve_relevant(query, domain, top_k=TOP_K_CHUNKS)
+                    logger.info(f"   ✓ Found {len(relevant_chunks)} relevant chunks after crawl")
                 
                 if not relevant_chunks:
                     return self._error_response(
                         query=query,
                         deconstructed=deconstructed,
-                        error="No relevant information found",
-                        suggestion=f"Try using force_refresh=true to re-crawl {domain}, or try a different query"
+                        error="Could not find relevant information",
+                        suggestion=f"The page at {domain} may not contain information about '{query}'. Try rephrasing your question or asking about a different topic."
                     )
             
             # Log relevance scores for debugging
