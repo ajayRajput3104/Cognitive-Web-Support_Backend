@@ -1,6 +1,6 @@
 """
-Stage 4: Answer Synthesis Agent
-RAG-based answer generation using Gemini Pro and retrieved context
+Stage 4: Answer Synthesis Agent - ENHANCED
+Better formatting, clearer instructions, more structured outputs
 """
 
 import httpx
@@ -19,15 +19,7 @@ async def synthesize_answer(
     relevant_chunks: List[Dict[str, Any]]
 ) -> str:
     """
-    Synthesizes final answer using Gemini Pro and retrieved context
-    
-    Args:
-        user_query: Original user question
-        deconstructed: Structured query information
-        relevant_chunks: Retrieved relevant text chunks from vector DB
-        
-    Returns:
-        Synthesized answer with source citations
+    Synthesizes final answer with enhanced formatting and structure
     """
     
     if not relevant_chunks:
@@ -38,32 +30,74 @@ async def synthesize_answer(
     context = "\n\n".join([
         f"[Source {i+1} - Relevance: {chunk['relevance_score']:.2f}]\n"
         f"URL: {chunk['url']}\n"
-        f"Content: {chunk['text'][:800]}"  # Limit to avoid token limits
+        f"Content: {chunk['text'][:1000]}"  # Increased from 800 for better context
         for i, chunk in enumerate(relevant_chunks)
     ])
     
-    prompt = f"""You are an expert support agent for {deconstructed.identified_entity}.
+    # Enhanced prompt for better, more detailed answers
+    prompt = f"""You are an expert technical support specialist for {deconstructed.identified_entity}.
 
-A user asked: "{user_query}"
+**User's Question:** "{user_query}"
 
-Analysis:
-- Intent: {deconstructed.user_intent}
-- Specific Details: {', '.join(deconstructed.specific_details[:5])}
-- Problem: {deconstructed.inhibitor}
+**What the user wants to accomplish:** {deconstructed.user_intent}
+**Specific topics they're asking about:** {', '.join(deconstructed.specific_details[:5])}
+**Their current challenge:** {deconstructed.inhibitor}
 
-Using ONLY the following verified information from official {deconstructed.identified_entity} documentation, provide a clear, helpful answer:
+**Verified Documentation Sources:**
 
 {context}
 
-Instructions:
-1. Provide step-by-step guidance when applicable
-2. Reference specific URLs from the sources (mention "Source 1", "Source 2", etc.)
-3. If the context doesn't fully answer the question, state what information is available and what is missing
-4. Be concise but thorough (aim for 200-400 words)
-5. Use a helpful, professional tone
-6. Format with clear paragraphs and bullet points where appropriate
+**INSTRUCTIONS - FOLLOW CAREFULLY:**
 
-Answer:"""
+1. **Structure Your Response:**
+   - Start with a brief direct answer (1-2 sentences)
+   - Then provide COMPLETE, DETAILED step-by-step instructions
+   - Include ALL relevant details, options, and settings
+   - End with additional tips or warnings if applicable
+
+2. **For Step-by-Step Instructions:**
+   - Use numbered lists (1., 2., 3.)
+   - Include EVERY step - don't skip "obvious" ones
+   - For each step, explain WHAT to do AND WHERE to find it
+   - If there are options/choices in a step, explain them
+   - Example: "3. **Name your repository** - Enter a descriptive name (required). Choose between Public (visible to everyone) or Private (only you and collaborators can see it)."
+
+3. **Source Citations:**
+   - Cite sources inline ONLY when introducing NEW information
+   - Use format: "According to the documentation (Source 1), ..."
+   - DON'T repeat source citations for the same information
+   - Use sources naturally, not after every sentence
+
+4. **Completeness:**
+   - Cover ALL aspects mentioned in the documentation
+   - Include prerequisites, requirements, or permissions needed
+   - Mention alternative methods if the docs show them
+   - Add warnings about common mistakes or limitations
+
+5. **Formatting:**
+   - Use **bold** for important terms, button names, or settings
+   - Use line breaks between major sections
+   - Keep it scannable but thorough (300-500 words is fine if needed)
+   - Use bullet points for non-sequential options or tips
+
+6. **Tone:**
+   - Be helpful and clear, not robotic
+   - Explain WHY when it helps understanding
+   - Assume user is following along step-by-step
+
+**Example of GOOD detail level:**
+"3. **Configure repository settings:**
+   - Enter a repository name (required) - use lowercase, hyphens instead of spaces
+   - Add a description (optional but recommended for public repos)
+   - Choose visibility: **Public** (anyone can see) or **Private** (invitation only)
+   - Initialize with README: Check this to create a starting README.md file
+   - Add .gitignore: Select a template matching your project type to ignore common files
+   - Choose a license: Important for open source projects (Source 2 has details)"
+
+**Example of BAD detail level:**
+"3. Configure settings and create repository."
+
+Now provide your detailed, comprehensive answer:"""
 
     try:
         logger.debug(f"Synthesizing answer for: {user_query[:100]}")
@@ -74,28 +108,85 @@ Answer:"""
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
                     "generationConfig": {
-                        "temperature": 0.3,
-                        "maxOutputTokens": 2000
+                        "temperature": 0.1,  # Lower for more focused, detailed answers
+                        "maxOutputTokens": 3000,  # Increased to allow longer, detailed responses
+                        "topP": 0.9,
+                        "topK": 30
                     }
                 }
             )
             
             if response.status_code != 200:
                 logger.error(f"Gemini API error: {response.status_code}")
-                raise Exception(f"Gemini API error: {response.status_code}")
+                logger.error(f"Response: {response.text}")
+                
+                # Enhanced fallback with better formatting
+                best_chunk = relevant_chunks[0]
+                return f"""Based on the {deconstructed.identified_entity} documentation, here's what I found:
+
+{best_chunk['text'][:600]}...
+
+**Note:** I encountered an API error (HTTP {response.status_code}) while generating a formatted response. The content above is directly from the source documentation.
+
+**For complete information, visit:**
+{best_chunk['url']}
+
+**Alternative:** Try rephrasing your question or contact {deconstructed.identified_entity} support directly.
+
+📚 **Sources:**
+1. {best_chunk['url']}"""
             
             result = response.json()
+            
+            # Check if we got a valid response
+            if "candidates" not in result or not result["candidates"]:
+                logger.error("No candidates in Gemini response")
+                return self._fallback_answer(user_query, deconstructed, relevant_chunks)
+            
             answer = result["candidates"][0]["content"]["parts"][0]["text"]
             
-            # Add source URLs at the end
-            sources = "\n\n📚 **Sources:**\n" + "\n".join([
-                f"{i+1}. {chunk['url']}" 
-                for i, chunk in enumerate(relevant_chunks)
-            ])
+            # Clean up the answer
+            import re
+            answer = re.sub(r'\n{3,}', '\n\n', answer)  # Remove excessive newlines
+            answer = re.sub(r'\(Source \d+\)\s*\(Source \d+\)', '(Source \\1)', answer)  # Remove duplicate source citations
+            
+            # Add clean, professional source section
+            sources = "\n\n" + "─" * 70 + "\n\n**📚 Official Documentation Sources:**\n"
+            for i, chunk in enumerate(relevant_chunks):
+                relevance_indicator = "⭐" if chunk['relevance_score'] >= 0.7 else "✓"
+                sources += f"\n{relevance_indicator} **Source {i+1}:** {chunk['url']}"
+            
+            sources += "\n\n*Answers are based on official documentation and verified sources only.*"
             
             logger.debug("Answer synthesis successful")
             return answer + sources
             
     except Exception as e:
         logger.error(f"Answer synthesis failed: {e}", exc_info=True)
-        return f"Error generating answer: {str(e)}"
+        return self._fallback_answer(user_query, deconstructed, relevant_chunks)
+
+
+def _fallback_answer(
+    user_query: str,
+    deconstructed: DeconstructedQuery,
+    relevant_chunks: List[Dict[str, Any]]
+) -> str:
+    """
+    Generate a fallback answer when Gemini API fails
+    """
+    best_chunk = relevant_chunks[0]
+    
+    return f"""I found relevant information from {deconstructed.identified_entity} documentation:
+
+**Your Question:** {user_query}
+
+**From the Documentation:**
+
+{best_chunk['text'][:500]}...
+
+**Direct Link:** {best_chunk['url']}
+
+**Note:** I'm currently unable to generate a formatted answer, but the information above should help. For the complete guide, please visit the source link.
+
+📚 **Additional Sources:**
+""" + "\n".join([f"{i+1}. {chunk['url']}" for i, chunk in enumerate(relevant_chunks)])

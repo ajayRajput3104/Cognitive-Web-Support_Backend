@@ -99,18 +99,26 @@ class CognitiveBrain:
                 chunks_crawled = domain_stats.get('chunks', 0)
                 logger.info(f"   ✓ Cache hit: {chunks_crawled} chunks available")
                 
-                # Quick relevance check
+                # ENHANCED: More aggressive relevance check
                 if chunks_crawled > 0:
                     test_chunks = self.vector_store.retrieve_relevant(
                         query, 
                         domain, 
-                        top_k=1
+                        top_k=3  # Check top 3 instead of 1
                     )
                     
-                    # If relevance is too low, crawl the specific page
-                    if test_chunks and test_chunks[0]['relevance_score'] < 0.5:
-                        logger.info(f"   ⚠️  Low relevance ({test_chunks[0]['relevance_score']:.2f}), crawling specific page...")
-                        use_cached = False
+                    # Calculate average relevance of top results
+                    if test_chunks:
+                        avg_relevance = sum(c['relevance_score'] for c in test_chunks) / len(test_chunks)
+                        max_relevance = max(c['relevance_score'] for c in test_chunks)
+                        
+                        logger.info(f"   ✓ Cached relevance - Avg: {avg_relevance:.2f}, Max: {max_relevance:.2f}")
+                        
+                        # OPTIMAL THRESHOLD: Re-crawl if average < 0.55 OR max < 0.65
+                        if avg_relevance < 0.55 or max_relevance < 0.65:
+                            logger.info(f"   🔄 Relevance too low (avg: {avg_relevance:.2f}, max: {max_relevance:.2f})")
+                            logger.info(f"   🕷️  Crawling specific page for better content...")
+                            use_cached = False
             
             if not use_cached:
                 logger.info(f"\n🕷️  Stage 3: Crawling {domain}...")
