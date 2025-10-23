@@ -148,7 +148,8 @@ Now provide your detailed, comprehensive answer:"""
             # Clean up the answer
             import re
             answer = re.sub(r'\n{3,}', '\n\n', answer)  # Remove excessive newlines
-            answer = re.sub(r'\(Source \d+\)\s*\(Source \d+\)', '(Source \\1)', answer)  # Remove duplicate source citations
+            # Remove duplicate consecutive source citations (e.g., "Source 1) (Source 1)" → "Source 1)")
+            answer = re.sub(r'\(Source (\d+)\)\s*\(Source \1\)', r'(Source \1)', answer)
             
             # Add clean, professional source section
             sources = "\n\n" + "─" * 70 + "\n\n**📚 Official Documentation Sources:**\n"
@@ -163,7 +164,7 @@ Now provide your detailed, comprehensive answer:"""
             
     except Exception as e:
         logger.error(f"Answer synthesis failed: {e}", exc_info=True)
-        return self._fallback_answer(user_query, deconstructed, relevant_chunks)
+        return _fallback_answer(user_query, deconstructed, relevant_chunks)
 
 
 def _fallback_answer(
