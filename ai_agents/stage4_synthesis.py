@@ -47,57 +47,47 @@ async def synthesize_answer(
 
 {context}
 
-**INSTRUCTIONS - FOLLOW CAREFULLY:**
+**CRITICAL FORMATTING RULES:**
 
-1. **Structure Your Response:**
+1. **NO decorative separators** - Do not use lines like ──────, ====, ____, etc.
+2. **Clean markdown only** - Use proper markdown syntax:
+   - Use ## for section headers
+   - Use **bold** for emphasis (not ***text***)
+   - Use backticks for code: `code here`
+   - Use triple backticks for code blocks:
+   ```language
+   code block
+   ```
+3. **Structure:**
    - Start with a brief direct answer (1-2 sentences)
    - Then provide COMPLETE, DETAILED step-by-step instructions
-   - Include ALL relevant details, options, and settings
-   - End with additional tips or warnings if applicable
+   - Use numbered lists (1., 2., 3.) for sequential steps
+   - Use bullet points (-, not *) for non-sequential items
+4. **Code blocks:**
+   - Always specify language: ```javascript or ```bash or ```python
+   - Keep code examples concise but complete
+   - Add brief comments in code where helpful
+5. **Source citations:**
+   - Cite sources naturally: "According to the documentation..."
+   - Do NOT repeat citations unnecessarily
+   - Do NOT add source list at the end (I will add that)
+6. **Completeness:**
+   - Include ALL relevant details
+   - Explain each step thoroughly
+   - Mention prerequisites, options, and alternatives
+   - Add warnings for common mistakes
+7. **Tone:**
+   - Professional but friendly
+   - Clear and easy to follow
+   - Avoid unnecessary technical jargon
 
-2. **For Step-by-Step Instructions:**
-   - Use numbered lists (1., 2., 3.)
-   - Include EVERY step - don't skip "obvious" ones
-   - For each step, explain WHAT to do AND WHERE to find it
-   - If there are options/choices in a step, explain them
-   - Example: "3. **Name your repository** - Enter a descriptive name (required). Choose between Public (visible to everyone) or Private (only you and collaborators can see it)."
+**IMPORTANT:**
+- DO NOT add any separator lines or decorative borders
+- DO NOT add a sources section (I will add that automatically)
+- DO NOT use excessive asterisks or special characters
+- Keep formatting clean and readable
 
-3. **Source Citations:**
-   - Cite sources inline ONLY when introducing NEW information
-   - Use format: "According to the documentation (Source 1), ..."
-   - DON'T repeat source citations for the same information
-   - Use sources naturally, not after every sentence
-
-4. **Completeness:**
-   - Cover ALL aspects mentioned in the documentation
-   - Include prerequisites, requirements, or permissions needed
-   - Mention alternative methods if the docs show them
-   - Add warnings about common mistakes or limitations
-
-5. **Formatting:**
-   - Use **bold** for important terms, button names, or settings
-   - Use line breaks between major sections
-   - Keep it scannable but thorough (300-500 words is fine if needed)
-   - Use bullet points for non-sequential options or tips
-
-6. **Tone:**
-   - Be helpful and clear, not robotic
-   - Explain WHY when it helps understanding
-   - Assume user is following along step-by-step
-
-**Example of GOOD detail level:**
-"3. **Configure repository settings:**
-   - Enter a repository name (required) - use lowercase, hyphens instead of spaces
-   - Add a description (optional but recommended for public repos)
-   - Choose visibility: **Public** (anyone can see) or **Private** (invitation only)
-   - Initialize with README: Check this to create a starting README.md file
-   - Add .gitignore: Select a template matching your project type to ignore common files
-   - Choose a license: Important for open source projects (Source 2 has details)"
-
-**Example of BAD detail level:**
-"3. Configure settings and create repository."
-
-Now provide your detailed, comprehensive answer:"""
+Now provide your detailed, well-formatted answer:"""
 
     try:
         logger.debug(f"Synthesizing answer for: {user_query[:100]}")
@@ -147,12 +137,29 @@ Now provide your detailed, comprehensive answer:"""
             
             # Clean up the answer
             import re
-            answer = re.sub(r'\n{3,}', '\n\n', answer)  # Remove excessive newlines
-            # Remove duplicate consecutive source citations (e.g., "Source 1) (Source 1)" → "Source 1)")
+            
+            # Remove excessive newlines
+            answer = re.sub(r'\n{3,}', '\n\n', answer)
+            
+            # Remove duplicate consecutive source citations
             answer = re.sub(r'\(Source (\d+)\)\s*\(Source \1\)', r'(Source \1)', answer)
             
-            # Add clean, professional source section
-            sources = "\n\n" + "─" * 70 + "\n\n**📚 Official Documentation Sources:**\n"
+            # Remove stray asterisks used for emphasis (markdown artifacts)
+            # But preserve **bold** and *italic* that are properly formatted
+            answer = re.sub(r'\*{3,}', '**', answer)  # *** → **
+            answer = re.sub(r'(?<!\*)\*(?!\*)(?!\w)', '', answer)  # Remove single * not used for italic
+            
+            # Remove the long separator line that overflows
+            answer = re.sub(r'─{10,}', '', answer)
+            answer = re.sub(r'-{10,}', '', answer)
+            answer = re.sub(r'_{10,}', '', answer)
+            answer = re.sub(r'={10,}', '', answer)
+            
+            # Clean up source section formatting
+            answer = re.sub(r'\*+Answers are based on.*?\*+', 'Answers are based on official documentation and verified sources only.', answer, flags=re.IGNORECASE)
+            
+            # Add clean, contained source section
+            sources = "\n\n**📚 Official Documentation Sources:**\n"
             for i, chunk in enumerate(relevant_chunks):
                 relevance_indicator = "⭐" if chunk['relevance_score'] >= 0.7 else "✓"
                 sources += f"\n{relevance_indicator} **Source {i+1}:** {chunk['url']}"
