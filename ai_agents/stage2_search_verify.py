@@ -1,5 +1,5 @@
 """
-Stage 2: Search & Verification Agent - FIXED JSON PARSING
+Stage 2: Search & Verification Agent
 Finds and verifies official documentation URLs with better error handling
 """
 

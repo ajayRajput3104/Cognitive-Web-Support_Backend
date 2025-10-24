@@ -1,7 +1,6 @@
 """
-FastAPI Application - MEMORY OPTIMIZED for Render Free Tier (512MB)
+FastAPI Application 
 Production-Ready API Layer with memory management
-VERSION: Fixed rate limiting (no slowapi dependency)
 """
 
 from fastapi import FastAPI, HTTPException, Security, Request, status
@@ -16,7 +15,7 @@ import gc
 from brain import get_brain
 from config import ALLOWED_ORIGINS, PORT, LOG_LEVEL
 from middleware.auth import verify_api_key
-from middleware.rate_limiter import check_rate_limit  # Simple rate limiter
+from middleware.rate_limiter import check_rate_limit
 
 # Configure structured logging
 logging.basicConfig(
